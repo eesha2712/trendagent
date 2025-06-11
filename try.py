@@ -381,9 +381,9 @@ with tabs[2]:
                         continue
                 st.plotly_chart(fig, use_container_width=True, key=f"eda_{plot_type}_{c}_{i}")
         st.markdown("#### Gemini AI: Ask for EDA suggestions or interpretations.")
-        aiq = st.text_input("Ask Gemini (eda tab)", key="eda_gem")
-        if st.button("Ask on EDA", key="eda_gem_btn"):
-            st.info(gemini_chat(f"EDA on {dsn} for columns {cols}. {aiq}"))
+        aiq = st.text_input("Ask Gemini (eda tab)", key="eda_gem_tab")
+        if st.button("Ask on EDA", key="eda_gem_btn_tab"):
+        st.info(gemini_chat(f"EDA on {dsn} for columns {cols}. {aiq}"))
 
         st.markdown("**Coming soon:** Instant anomaly detection, pattern mining, feature engineering, explainable outlier detection.")
         st.image("https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=600&q=80", width=240, caption="EDA AI coming soon!")
@@ -393,8 +393,8 @@ with tabs[2]:
 
     # --- EDA Gemini Q&A ---
 st.markdown("#### Gemini AI: Exploratory Data Analysis Ideas")
-eda_q = st.text_input("Ask Gemini (EDA)", key="eda_gem")
-if st.button("Ask Gemini about EDA", key="eda_gem_btn"):
+eda_q = st.text_input("Ask Gemini (EDA)", key="eda_gem_bottom")
+if st.button("Ask Gemini about EDA", key="eda_gem_btn_bottom"):
     if 'df' in locals() and not df.empty:
         context = f"Columns: {', '.join(df.columns)}\nFirst few rows:\n{df.head(3).to_string(index=False)}"
         prompt = (
