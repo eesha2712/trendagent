@@ -59,20 +59,16 @@ with st.sidebar:
 
 # ---- Load Data ----
 datasets = {}
-if uploaded_files:
-    for file in uploaded_files:
-        try:
-            if file.name.endswith(".csv"):
-                df = pd.read_csv(file)
-                df.columns = [str(c).strip() for c in df.columns]
-                datasets[file.name] = df
-            else:
-                xls = pd.read_excel(file, sheet_name=None)
-                for sheet, df in xls.items():
-                    df.columns = [str(c).strip() for c in df.columns]
-                    datasets[f"{file.name} [{sheet}]"] = df
-        except Exception as e:
-            st.warning(f"Could not load {file.name}: {e}")
+for file in uploaded_files or []:
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+        df.columns = [str(c).strip() for c in df.columns]
+        datasets[file.name] = df
+    else:
+        xls = pd.read_excel(file, sheet_name=None)
+        for sheet, df in xls.items():
+            df.columns = [str(c).strip() for c in df.columns]
+            datasets[f"{file.name} [{sheet}]"] = df
 
 tab_titles = [
     "📚 Data Dictionary",
@@ -131,20 +127,10 @@ with tabs[1]:
         """)
     if datasets:
         dataset_names = list(datasets.keys())
-        max_n = len(dataset_names)
-        if max_n == 1:
-            n_select = 1
-        else:
-            n_select = st.number_input(
-                "How many datasets to analyze?",
-                min_value=1,
-                max_value=max_n,
-                value=min(2, max_n),
-                step=1,
-                key="n_select_input"
-            )
-        ds_choices = [st.selectbox(f"Dataset #{i+1}", dataset_names, key=f"cds_{i}") for i in range(int(n_select))]
-        var_choices = [st.multiselect(f"Columns from {ds_choices[i]}", list(datasets[ds_choices[i]].columns), key=f"cvars_{i}") for i in range(int(n_select))]
+        st.markdown("#### 1. Select datasets/columns for analysis")
+        n_select = st.number_input("How many datasets to analyze?", min_value=1, max_value=len(dataset_names), value=2)
+        ds_choices = [st.selectbox(f"Dataset #{i+1}", dataset_names, key=f"cds_{i}") for i in range(n_select)]
+        var_choices = [st.multiselect(f"Columns from {ds_choices[i]}", list(datasets[ds_choices[i]].columns), key=f"cvars_{i}") for i in range(n_select)]
 
         # Merge suggestion
         common_keys = set(datasets[ds_choices[0]].columns)
@@ -177,13 +163,177 @@ with tabs[1]:
         if data_for_analysis is not None and not data_for_analysis.empty and data_for_analysis.shape[1] > 0:
             st.markdown("### Data Snapshot")
             st.dataframe(data_for_analysis.head(20), use_container_width=True, key="cross_data_snapshot")
-            # ...keep your plotting, stats, and Gemini logic as before...
-        else:
-            data_for_analysis = None
-    else:
-        st.info("Upload at least one dataset to start analysis.")
 
-    # (Rest of your charting/stats/Gemini code can remain unchanged!)
+            # UI for dashboard chart types
+            all_group_cols = list(data_for_analysis.columns)
+            group_by = st.selectbox("Group/segment by (for trends/pie):", ["<None>"] + all_group_cols, key="cross_groupby")
+            chart_type = st.selectbox(
+                "Choose dashboard chart type",
+                [
+                    "Grouped Line Chart", "Stacked Bar Chart", "Pie Chart",
+                    "Regression Plot", "Scatter Plot", "Correlation Heatmap"
+                ],
+                key="cross_chart_type"
+            )
+            y_vars = st.multiselect("Y-axis variable(s):", [c for c in data_for_analysis.columns if c != group_by], default=[c for c in data_for_analysis.columns if c != group_by][:1], key="cross_yvars")
+
+            run_chart = st.button("Run Visualization", key="run_chart_btn")
+
+            if run_chart:
+                if chart_type == "Grouped Line Chart" and group_by != "<None>" and y_vars:
+                    for idx, y in enumerate(y_vars):
+                        fig = px.line(data_for_analysis, x=group_by, y=y, color=group_by)
+                        st.plotly_chart(fig, use_container_width=True, key=f"grouped_line_{y}_{idx}")
+                elif chart_type == "Stacked Bar Chart" and group_by != "<None>" and y_vars:
+                    melted = data_for_analysis.melt(id_vars=group_by, value_vars=y_vars, var_name="Variable", value_name="Value")
+                    fig = px.bar(melted, x=group_by, y="Value", color="Variable", barmode="stack")
+                    st.plotly_chart(fig, use_container_width=True, key="stacked_bar")
+                elif chart_type == "Pie Chart" and group_by != "<None>":
+                    for idx, y in enumerate(y_vars):
+                        pie_df = data_for_analysis.groupby(group_by)[y].sum().reset_index()
+                        fig = px.pie(pie_df, names=group_by, values=y, title=f"Pie: {y} by {group_by}")
+                        st.plotly_chart(fig, use_container_width=True, key=f"pie_{y}_{idx}")
+                elif chart_type == "Regression Plot" and len(y_vars) == 2:
+                    x, y = data_for_analysis[y_vars[0]].dropna(), data_for_analysis[y_vars[1]].dropna()
+                    mask = x.notnull() & y.notnull()
+                    x, y = x[mask], y[mask]
+                    if len(x) > 1:
+                        model = LinearRegression().fit(x.values.reshape(-1, 1), y.values)
+                        pred = model.predict(x.values.reshape(-1, 1))
+                        fig = px.scatter(x=x, y=y, trendline="ols", title=f"Regression: {y_vars[0]} vs {y_vars[1]}")
+                        st.plotly_chart(fig, use_container_width=True, key="regression")
+                        st.success(f"y = {model.coef_[0]:.3f}x + {model.intercept_:.3f} (R²={model.score(x.values.reshape(-1, 1), y.values):.3f})")
+                    else:
+                        st.warning("Not enough data for regression.")
+                elif chart_type == "Scatter Plot" and len(y_vars) == 2:
+                    fig = px.scatter(data_for_analysis, x=y_vars[0], y=y_vars[1])
+                    st.plotly_chart(fig, use_container_width=True, key="scatter")
+                elif chart_type == "Correlation Heatmap" and len(y_vars) >= 2:
+                    fig = px.imshow(data_for_analysis[y_vars].corr())
+                    st.plotly_chart(fig, use_container_width=True, key="corr_heatmap")
+                else:
+                    st.warning("Please select the correct variables and grouping for your chosen chart.")
+
+            # --- Interesting Statistical Tests (with CSV Download) ---
+st.markdown("### Select Statistical Tests to Run")
+test_options = [
+    "Summary Stats",
+    "Correlation Matrix",
+    "Regression (2 numeric variables)",
+    "T-Test (group vs numeric)",
+    "ANOVA (group vs numeric)",
+    "Chi-square (two categoricals)"
+]
+selected_tests = st.multiselect("Pick tests", test_options, default=["Summary Stats"])
+
+test_results = []
+test_csvs = {}
+
+if st.button("Run Selected Tests", key="run_selected_tests"):
+    # Summary
+    if "Summary Stats" in selected_tests:
+        desc = data_for_analysis.describe(include="all").T
+        st.write(desc)
+        test_results.append(("Summary Stats", desc.to_string()))
+        test_csvs["Summary_Stats.csv"] = desc
+
+    # Correlation
+    if "Correlation Matrix" in selected_tests:
+        corr = data_for_analysis.corr()
+        st.dataframe(corr)
+        test_results.append(("Correlation Matrix", corr.to_string()))
+        test_csvs["Correlation_Matrix.csv"] = corr
+
+    # Regression
+    if "Regression (2 numeric variables)" in selected_tests and len(y_vars) == 2:
+        x, y = data_for_analysis[y_vars[0]].dropna(), data_for_analysis[y_vars[1]].dropna()
+        mask = x.notnull() & y.notnull()
+        x, y = x[mask], y[mask]
+        if len(x) > 1:
+            model = LinearRegression().fit(x.values.reshape(-1, 1), y.values)
+            out = f"y = {model.coef_[0]:.3f}x + {model.intercept_:.3f} (R²={model.score(x.values.reshape(-1, 1), y.values):.3f})"
+            st.success(out)
+            test_results.append(("Regression", out))
+            reg_df = pd.DataFrame({"x": x, "y": y, "y_pred": model.predict(x.values.reshape(-1, 1))})
+            test_csvs["Regression_Data.csv"] = reg_df
+        else:
+            st.warning("Need more data for regression.")
+
+    # T-Test
+    if "T-Test (group vs numeric)" in selected_tests:
+        group_col = st.selectbox("T-test: Group column (categorical, 2 levels)", all_group_cols, key="ttest_group_col2")
+        num_col = st.selectbox("T-test: Numeric column", [c for c in all_group_cols if pd.api.types.is_numeric_dtype(data_for_analysis[c])], key="ttest_num_col2")
+        group_vals = data_for_analysis[group_col].dropna().unique()
+        if len(group_vals) == 2:
+            grp1 = data_for_analysis[data_for_analysis[group_col]==group_vals[0]][num_col].dropna()
+            grp2 = data_for_analysis[data_for_analysis[group_col]==group_vals[1]][num_col].dropna()
+            t_stat, p_val = stats.ttest_ind(grp1, grp2, equal_var=False)
+            out = f"T-test: t={t_stat:.3f}, p={p_val:.4f} ({group_vals[0]} vs {group_vals[1]})"
+            st.info(out)
+            test_results.append(("T-test", out))
+            ttest_df = pd.DataFrame({f"{group_col}": np.concatenate([np.repeat(group_vals[0], len(grp1)), np.repeat(group_vals[1], len(grp2))]),
+                                    num_col: np.concatenate([grp1, grp2])})
+            test_csvs["Ttest_Data.csv"] = ttest_df
+        else:
+            st.warning("Selected group column must have exactly 2 unique values for t-test.")
+
+    # ANOVA
+    if "ANOVA (group vs numeric)" in selected_tests:
+        group_col = st.selectbox("ANOVA: Group column (categorical, >2 levels)", all_group_cols, key="anova_group_col2")
+        num_col = st.selectbox("ANOVA: Numeric column", [c for c in all_group_cols if pd.api.types.is_numeric_dtype(data_for_analysis[c])], key="anova_num_col2")
+        groups = data_for_analysis[group_col].dropna().unique()
+        if len(groups) > 2:
+            arrays = [data_for_analysis[data_for_analysis[group_col]==g][num_col].dropna() for g in groups]
+            f_stat, p_val = stats.f_oneway(*arrays)
+            out = f"ANOVA: F={f_stat:.3f}, p={p_val:.4f}"
+            st.info(out)
+            test_results.append(("ANOVA", out))
+            anova_df = data_for_analysis[[group_col, num_col]].dropna()
+            test_csvs["ANOVA_Data.csv"] = anova_df
+        else:
+            st.warning("Selected group column must have >2 unique values for ANOVA.")
+
+    # Chi-square
+    if "Chi-square (two categoricals)" in selected_tests:
+        cat1 = st.selectbox("Chi-square: Categorical column 1", all_group_cols, key="chi_col1b")
+        cat2 = st.selectbox("Chi-square: Categorical column 2", [c for c in all_group_cols if c != cat1], key="chi_col2b")
+        tbl = pd.crosstab(data_for_analysis[cat1], data_for_analysis[cat2])
+        chi2, p, dof, expected = stats.chi2_contingency(tbl)
+        out = f"Chi-square: χ²={chi2:.2f}, p={p:.4f}, dof={dof}"
+        st.info(out)
+        test_results.append(("Chi-square", out))
+        test_csvs["ChiSq_Data.csv"] = tbl
+
+    # Download results table
+    if test_results:
+        results_df = pd.DataFrame(test_results, columns=["Test", "Result"])
+        st.markdown("#### Download All Test Results")
+        st.download_button("Download All Results (CSV)", results_df.to_csv(index=False).encode(), "test_results.csv")
+
+        # Download individual CSVs for each test’s raw data
+        for fname, df in test_csvs.items():
+            st.download_button(f"Download {fname}", df.to_csv(index=True).encode(), file_name=fname)
+
+    # Download all analyzed data
+    st.markdown("#### Download Analyzed Data")
+    st.download_button("Download Data (CSV)", data_for_analysis.to_csv(index=False).encode(), "analyzed_data.csv")
+
+    # --- Cross-Analysis Gemini Q&A ---
+st.markdown("#### Gemini AI: Insight from Cross-Dataset Analysis")
+cross_q = st.text_input("Ask Gemini (Cross-Analysis)", key="cross_gem")
+if st.button("Ask Gemini about Cross-Analysis", key="cross_gem_btn"):
+    if data_for_analysis is not None and not data_for_analysis.empty:
+        context = f"Columns: {', '.join(data_for_analysis.columns)}\nFirst few rows:\n{data_for_analysis.head(3).to_string(index=False)}"
+        prompt = (
+            f"You are an AI data analyst. Below is a combined dataset for cross-analysis:\n{context}\n\n"
+            f"User question: {cross_q}\n\n"
+            "Suggest interesting trends to investigate, tests to run (t-test, regression, chi-square, etc.), or help interpret dashboard graphs. "
+            "Highlight possible group differences or relationships."
+        )
+        with st.spinner("Gemini is answering..."):
+            st.info(gemini_chat(prompt))
+    else:
+        st.warning("No data available for cross-analysis.")
 
 # --- 3. EDA ---
 with tabs[2]:
