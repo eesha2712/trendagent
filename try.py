@@ -113,7 +113,6 @@ with tabs[0]:
                 st.info(gemini_chat(prompt))
         else:
             st.warning("No data to analyze.")
-
     st.markdown("**Coming soon:** Data profiling, codebook auto-generation, interactive schema editing.")
 # --- 2. Cross-Dataset Trends & Groups ---
 with tabs[1]:
