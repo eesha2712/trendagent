@@ -115,8 +115,6 @@ with tabs[0]:
             st.warning("No data to analyze.")
 
     st.markdown("**Coming soon:** Data profiling, codebook auto-generation, interactive schema editing.")
-    st.image("https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif", width=220, caption="Dictionary AI coming soon!")
-
 # --- 2. Cross-Dataset Trends & Groups ---
 with tabs[1]:
     st.subheader("Cross-Dataset Trend Analysis & Dashboard Graphs")
@@ -386,8 +384,6 @@ with tabs[2]:
             st.info(gemini_chat(f"EDA on {dsn} for columns {cols}. {aiq}"))
 
         st.markdown("**Coming soon:** Instant anomaly detection, pattern mining, feature engineering, explainable outlier detection.")
-        st.image("https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=600&q=80", width=240, caption="EDA AI coming soon!")
-
     else:
         st.info("Upload data to begin EDA.")
 
