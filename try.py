@@ -9,7 +9,7 @@ import json
 
 # --- Gemini AI helper ---
 def gemini_chat(prompt):
-    API_KEY = "AIzaSyADrDbMIiCraC68vA2Lezf0K3DH4XxKgfU"
+    API_KEY = ""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
     headers = {"Content-Type": "application/json"}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
